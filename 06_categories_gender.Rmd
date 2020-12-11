@@ -12,7 +12,8 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, dev = "cairo_pdf")
-options(max.print = 1500)
+options(max.print = 1500, # prints full model output
+        scipen = 999) # avoids scientific notation
 ```
 
 Library packages

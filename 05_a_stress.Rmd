@@ -12,6 +12,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, dev = "cairo_pdf")
+options(scipen = 999) # avoid scientific notation
 ```
 
 Library packages
@@ -141,8 +142,10 @@ Now to see if the visual differences are statistically significant. Based on the
 
 ```{r}
 # import data set for modeling
-stress_model = read.csv("plot_model/a_stress_model.csv", 
+vowels = read.csv("plot_model/vowel_model.csv", 
                   stringsAsFactors = TRUE)
+stress_model = vowels %>% 
+  filter(Vowel=="a")
 ```
 
 ```{r}
@@ -154,3 +157,55 @@ summary(stress_a_regression)
 
 Based on the model output above, the DIMEx100 speakers have higher productions of /a/ than CBAS speakers, and all speakers show centralization of /a/ in atonic syllables. Since the interaction of Corpus and Stress is not significant, it does not appear that Bay Area Spanish has any sort of exogenous variation (due to contact with California English).
 
+```{r}
+# submit to mixed effects linear regression model
+stress_dur = lmer(Dur_norm ~ Corpus * Gender * stress + (1|Participant),
+                   data = stress_model, REML = FALSE)
+summary(stress_dur)
+```
+
+Post-hoc:
+
+```{r message = FALSE}
+emmeans(stress_dur, list(pairwise ~ Corpus * stress), adjust="tukey")
+```
+
+Based on the output of the post-hoc test above, within CBAS, normalized duration is longer in stressed vowels than in unstressed vowels (p < 0.001). Additionally, the duration of unstressed vowels is shorter in CBAS than in DIMEx100 (p < 0.001), which may be a contact effect from California English.
+
+Plot this:
+
+```{r message = FALSE, echo = FALSE, warning = FALSE}
+# duration in ms
+dur_stress_plot = ggplot(stress_model,
+                   aes(x = Corpus:stress,
+                       y = Dur_norm,
+                       fill = Corpus:stress)) +
+  geom_violin(draw_quantiles = c(.25, .50, .75)) +
+  theme_classic() +
+  scale_x_discrete(labels = c("CBAS stressed",
+                              "CBAS unstressed",
+                              "DIMEx100 stressed",
+                              "DIMEx100 unstressed")) +
+  geom_signif(comparisons = list(c("CBAS:stressed", "CBAS:unstressed")),
+              y_position = 575,
+              annotation = "***") +
+  geom_signif(comparisons = list(c("CBAS:unstressed", "DIMEx100:unstressed")),
+              y_position = 650,
+              annotation = "***") +
+  #xlim(c(2.2, 0.85)) + # reverses axis scale
+  ylim(c(50, 700)) + # reverses axis scale
+  labs(x = "Corpus and stress type",
+       y = "Duration multiplied by speech rate",
+       title = "Normalized duration of /a/ across corpus and stress") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.title = element_text(size = 12)) +
+   guides(fill = FALSE)
+  # scale_size_manual(values = c(3,4))
+dur_stress_plot
+```
+
+```{r echo = FALSE, eval = FALSE}
+cairo_pdf("figs/dur_stress_plot.pdf", family = "LM Roman 10", width = 7, height = 5)
+dur_stress_plot
+dev.off()
+```
