@@ -1,0 +1,87 @@
+---
+title: "Analysis of vowel categories across corpus, gender, and consonantal context"
+author: "Annie Helms (annie_helms@berkeley.edu)"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, dev = "cairo_pdf")
+options(max.print = 3000)
+```
+
+Library packages
+
+```{r message = FALSE, warning = FALSE}
+library(r2glmm)
+library(dplyr)
+library(ggplot2)
+library(lmerTest) #mixed effects linear regression
+library(ggsignif) # helps plot significant relations in ggplot2
+library(kableExtra) # formats dataframes in html output
+library(BSDA) # manual t-test with means and sd info
+library(emmeans) # tukey post-hoc tests
+```
+
+### Upload data set
+
+```{r message = FALSE, echo = FALSE}
+setwd("/Users/Annie/Box Sync/PhD/github/Bay_Area_Spanish/")
+```
+
+Upload productions of /a/ across stress, corpus, consonantal context, and gender.
+
+```{r}
+cons_model = read.csv("plot_model/cons_cont.csv", 
+                  stringsAsFactors = TRUE)
+head(cons_model, 5) %>%
+  kable() %>% # piped to allow for kable formatting
+  kable_styling(bootstrap_options = c("striped", # alternates row color in table
+                                      "hover", # rows are highlighted when hovered over
+                                      "condensed", # row height is condensed
+                                      "responsive")) %>% # horizontal scrolling across table
+  scroll_box(width = "100%")
+```
+
+Models first. Three models: duration (normalized), F1 and F2.
+
+```{r}
+# submit to mixed effects linear regression model
+dur_model = lmer(Dur_norm ~ Corpus * Vowel * prev_ph + (1|Participant),
+                   data = cons_model, REML = FALSE)
+summary(dur_model)
+```
+
+Post-hoc tests:
+
+```{r message = FALSE}
+emmeans(dur_model, list(pairwise ~ prev_ph * Corpus), adjust="tukey")
+```
+
+According to the output above, there is no significant effect of consonantal context on duration across the corpora.
+
+```{r}
+# submit to mixed effects linear regression model
+f1_model = lmer(F1.50_norm ~ Corpus * prev_ph * Vowel + (1|Participant),
+                   data = cons_model, REML = FALSE)
+summary(f1_model)
+```
+
+According to the output above, there is no significant difference in F1 due to consonantal context across the corpora.
+
+```{r}
+# submit to mixed effects linear regression model
+f2_model = lmer(F2.50_norm ~ Corpus * prev_ph * Vowel + (1|Participant),
+                   data = cons_model, REML = FALSE)
+summary(f2_model)
+```
+
+According to the output of the model above, the interaction of previous phone and corpus is not significantly, meaning that consonantal environment has the same effect on vowels in both corpora.
+
+
+

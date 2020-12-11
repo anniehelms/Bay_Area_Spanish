@@ -61,20 +61,55 @@ head(area_plot, 5) %>%
   scroll_box(width = "100%")
 ```
 
+```{r}
+# remove /a/ from the above set
+area_plot_no_a = area_plot %>%
+  filter(Vowel != "a")
+
+head(area_plot_no_a, 5) %>%
+  kable() %>% # piped to allow for kable formatting
+  kable_styling(bootstrap_options = c("striped", # alternates row color in table
+                                      "hover", # rows are highlighted when hovered over
+                                      "condensed", # row height is condensed
+                                      "responsive")) %>% # horizontal scrolling across table
+  scroll_box(width = "100%")
+```
+
 ```{r message = FALSE, echo = FALSE, warning = FALSE}
-stress = ggplot(area_plot,
+stress = ggplot(area_plot_no_a,
                    aes(x = F2.50_norm,
                        y = F1.50_norm,
-                       color = Vowel,
                        shape = Corpus:Gender)) +
-  geom_point(size = 2) +
+  geom_point(aes(color = Vowel),
+                 size = 2,
+             alpha = 0.6) +
   geom_point(data = stress_plot,
              aes(x = F2.50_norm,
                  y = F1.50_norm,
-                 alpha = stress)) +
+                 size = stress)) +
+  geom_label(aes(x = 2.1,
+                 y = 0.3,
+                 label = "i"),
+             color = "black") +
+  geom_label(aes(x = 1.8,
+                 y = 0.48,
+                 label = "e"),
+             color = "black") +
+  geom_label(aes(x = 1.45,
+                 y = 0.63,
+                 label = "a"),
+             color = "black") +
+  geom_label(aes(x = 0.9,
+                 y = 0.33,
+                 label = "u"),
+             color = "black") +
+  geom_label(aes(x = 1.12,
+                 y = 0.46,
+                 label = "o"),
+             color = "black") +
   theme_classic() +
-  #xlim(c(2800, 500)) + # reverses axis scale
-  #ylim(c(900, 300)) + # reverses axis scale
+  xlim(c(2.3, 0.8)) + # reverses axis scale
+  ylim(c(0.72, 0.28)) + # reverses axis scale
   labs(x = "Normalized F2",
        y = "Normalized F1",
        title = "Spanish vowel space: /a/ across stress") +
@@ -82,8 +117,40 @@ stress = ggplot(area_plot,
         axis.title = element_text(size = 12),
         legend.text = element_text(size = 12),
         legend.title = element_text(size = 14),
-        legend.position = "right")
+        legend.position = "right") +
+  guides(color = FALSE,
+         size = guide_legend(title = "Stress"),
+         shape = guide_legend(title = "Speaker Profile")) +
+  scale_size_manual(values = c(2,3),
+                    labels = c("Stressed", "Unstressed")) +
+  scale_shape_manual(labels = c("CBAS Female",
+                                "CBAS Male",
+                                "DIMEx100 Female",
+                                "DIMEx100 Male"),
+                     values = c(15, 16, 0, 1))
 stress
 ```
 
+```{r echo = FALSE, eval = FALSE}
+cairo_pdf("figs/stress_a.pdf", family = "LM Roman 10", width = 7, height = 4)
+stress
+dev.off()
+```
+
+Now to see if the visual differences are statistically significant. Based on the plot above, only F1 will be examined.
+
+```{r}
+# import data set for modeling
+stress_model = read.csv("plot_model/a_stress_model.csv", 
+                  stringsAsFactors = TRUE)
+```
+
+```{r}
+# submit to mixed effects linear regression model
+stress_a_regression = lmer(F1.50_norm ~ Corpus * Gender * stress + (1|Participant),
+                   data = stress_model, REML = FALSE)
+summary(stress_a_regression)
+```
+
+Based on the model output above, the DIMEx100 speakers have higher productions of /a/ than CBAS speakers, and all speakers show centralization of /a/ in atonic syllables. Since the interaction of Corpus and Stress is not significant, it does not appear that Bay Area Spanish has any sort of exogenous variation (due to contact with California English).
 

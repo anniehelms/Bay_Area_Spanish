@@ -1,0 +1,101 @@
+---
+title: "Analysis of vowel space compression across gender and corpus"
+author: "Annie Helms (annie_helms@berkeley.edu)"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, dev = "cairo_pdf")
+options(max.print = 1500)
+```
+
+Library packages
+
+```{r message = FALSE, warning = FALSE}
+library(r2glmm)
+library(dplyr)
+library(ggplot2)
+library(lmerTest) #mixed effects linear regression
+library(ggsignif) # helps plot significant relations in ggplot2
+library(kableExtra) # formats dataframes in html output
+library(BSDA) # manual t-test with means and sd info
+library(emmeans) # tukey post-hoc tests
+```
+
+### Upload data set
+
+```{r message = FALSE, echo = FALSE}
+setwd("/Users/Annie/Box Sync/PhD/github/Bay_Area_Spanish/")
+```
+
+Upload productions of vowels across corpus and gender.
+
+```{r}
+area_model = read.csv("plot_model/area_model.csv", 
+                  stringsAsFactors = TRUE)
+head(area_model, 5) %>%
+  kable() %>% # piped to allow for kable formatting
+  kable_styling(bootstrap_options = c("striped", # alternates row color in table
+                                      "hover", # rows are highlighted when hovered over
+                                      "condensed", # row height is condensed
+                                      "responsive")) %>% # horizontal scrolling across table
+  scroll_box(width = "100%")
+```
+
+Create smaller data set and calculate area by speaker.
+
+```{r}
+area_speaker = area_model %>%
+  group_by(Participant, Gender, Corpus) %>% 
+  summarize(Area = mean(Area))
+```
+
+Run regression model:
+
+```{r}
+# submit to fixed effects linear regression model
+area_speaker_model = glm(Area ~ Corpus * Gender,
+                   data = area_speaker)
+summary(area_speaker_model)
+```
+
+According to the model output above, there is no significant difference between vowel space area across gender and corpus.
+
+Now look at dispersion.
+
+```{r}
+disp_model = read.csv("plot_model/disp_model.csv", 
+                  stringsAsFactors = TRUE)
+head(disp_model, 5) %>%
+  kable() %>% # piped to allow for kable formatting
+  kable_styling(bootstrap_options = c("striped", # alternates row color in table
+                                      "hover", # rows are highlighted when hovered over
+                                      "condensed", # row height is condensed
+                                      "responsive")) %>% # horizontal scrolling across table
+  scroll_box(width = "100%")
+```
+
+Create smaller data set and calculate dispersion by speaker.
+
+```{r}
+disp_speaker = disp_model %>%
+  group_by(Participant, Gender, Corpus) %>% 
+  summarize(Disp = mean(Dispersion))
+```
+
+Now submit to fixed effects linear regression model.
+
+```{r}
+# submit to fixed effects linear regression model
+disp_speaker_model = glm(Disp ~ Corpus * Gender,
+                   data = disp_speaker)
+summary(disp_speaker_model)
+```
+
+According to the model output above, there is also no significant difference in vowel dispersion across gender and corpus.
