@@ -1,0 +1,558 @@
+---
+title: "Vowel contours for Spanish data"
+author: "Annie Helms (annie_helms@berkeley.edu)"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+setwd("/Users/Annie/Box Sync/PhD/github/Bay_Area_Spanish/")
+```
+
+Following the methodology laid out in Fruewahld (2010) (https://www.ling.upenn.edu/~joseff/papers/fruehwald_ssanova.pdf), install the package `gss` to fit the Smoothing Spline ANOVA (SS-ANOVA) to the resulting formant data. 
+
+```{r warning = FALSE, message = FALSE}
+# run this cell to install package `gss`
+# install.packages("gss")
+```
+Install necessary libraries:
+
+```{r message = FALSE, warning = FALSE}
+library(dplyr) # manipulating data frames
+library(ggplot2) # making visualizations
+library(kableExtra) # formats dataframes in html output
+library(gss) #SS-ANOVA
+```
+
+Upload the .csv file with the normalized formant measurements, extracted every 2ms. The data needs to be in a format where `F1` is a column, as well as `RTime` (scaled time variable measuring 2ms intervals).
+
+```{r}
+formants = read.csv("data/contour_norm.csv", 
+                  stringsAsFactors = TRUE)
+head(formants, 5) %>%
+  kable() %>% # piped to allow for kable formatting
+  kable_styling(bootstrap_options = c("striped", # alternates row color in table
+                                      "hover", # rows are highlighted when hovered over
+                                      "condensed", # row height is condensed
+                                      "responsive")) %>% # horizontal scrolling across table
+  scroll_box(width = "100%")
+```
+
+Since this data set contains Spanish vowels, create subsets of the data for each vowel in question. From these subsets, randomly sample 100 productions.
+
+```{r}
+a = formants %>% 
+  filter(Vowel=="a") %>% 
+  filter(unique %in% sample(levels(unique),100))
+
+e = formants %>% 
+  filter(Vowel=="e")%>% 
+  filter(unique %in% sample(levels(unique),100))
+
+i = formants %>% 
+  filter(Vowel=="i")%>% 
+  filter(unique %in% sample(levels(unique),100))
+
+o = formants %>% 
+  filter(Vowel=="o") %>% 
+  filter(unique %in% sample(levels(unique),100))
+
+u = formants %>% 
+  filter(Vowel=="u") %>% 
+  filter(unique %in% sample(levels(unique),100))
+```
+
+Make a preliminary plots of /a/ productions, and visually see where formant tracking errors may be. the factor `unique` is used to group together trajectories of the same token by the same speaker.
+
+```{r}
+a_track = ggplot(data = a,
+                 aes(x = RTime,
+                     group = unique,
+                     color = stress)) +
+  geom_line(aes(y = F1_norm),
+            alpha = 0.8) +
+  geom_line(aes(y = F2_norm),
+            alpha = 0.8) +
+  theme_classic()
+a_track
+```
+
+Now to fit the data with SS-ANOVA.
+
+```{r}
+f1_a = ssanova(F1_norm ~ stress * RTime, data = a)
+f2_a = ssanova(F2_norm ~ stress * RTime, data = a)
+```
+
+To test the fit of the data, generate a dummy set of 100 evenly spaced points across our factor `RTime` for each level of `stress`.
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), stress = c("stressed","unstressed"))
+```
+
+Store the results of the predict function (comparing model to dummy set).
+
+```{r}
+grid$F1.Fit = predict(f1_a, newdata = grid, se = T)$fit
+grid$F1.SE = predict(f1_a, newdata = grid, se = T)$se.fit
+
+grid$F2.Fit = predict(f2_a, newdata = grid, se = T)$fit
+grid$F2.SE = predict(f2_a, newdata = grid, se = T)$se.fit
+```
+
+Plot the data stored in grid, with 95% confidence interval:
+
+```{r}
+ss_a = ggplot(data = grid,
+              aes(x = RTime,
+                  color = stress,
+                  group = stress)) +
+  geom_line(aes(y = F1.Fit),
+            alpha = 1,
+            color = "grey20")+ 
+  geom_line(aes(y = F2.Fit),
+            alpha = 1,
+            color = "grey20") +
+  geom_ribbon(aes(ymin = F1.Fit-(1.96*F1.SE),
+                  ymax = F1.Fit+(1.96*F1.SE),
+                  fill = stress),
+              alpha = 0.5,
+              color = "NA") + 
+  geom_ribbon(aes(ymin = F2.Fit-(1.96*F2.SE),
+                  ymax = F2.Fit+(1.96*F2.SE),
+                  fill = stress),
+              alpha = 0.5,
+              color = "NA") +
+  labs(y = "Normalized Frequency",
+       x = "Scaled Time",
+       title = "Formant Trajectories of Spanish /a/") +
+  guides(fill = guide_legend(title = "Stress")) +
+  scale_fill_hue(labels = c("Stressed", "Unstressed")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "right")
+ss_a
+```
+
+```{r echo = FALSE, eval = FALSE}
+# save image to pdf
+cairo_pdf("figs/contour_a.pdf", family = "Charis SIL", width = 7, height = 4)
+ss_a
+dev.off()
+```
+
+Now to measure statistically whether stress significantly impacts the formant shape.
+
+```{r}
+## create prediction grid
+grid = expand.grid(RTime = seq(0,1,length = 100),stress = c("stressed","unstressed"))
+
+## Predict for certain terms
+## The "inc" argument to predict is key here
+grid$F1.Fit = predict(f1_a, grid, se = T,inc = c("1","RTime"))$fit
+grid$F1.SE = predict(f1_a, grid, se = T,inc = c("1","RTime"))$se.fit
+grid$F2.Fit = predict(f2_a, grid, se = T,inc = c("1","RTime"))$fit
+grid$F2.SE = predict(f2_a, grid, se = T,inc = c("1","RTime"))$se.fit
+```
+
+Now we can plot this underlying form, without effects of stress.
+
+```{r}
+bare_a = ggplot(grid, aes(x = RTime)) +
+  geom_line(aes(y= F1.Fit)) +
+  geom_line(aes(y= F2.Fit)) +
+  geom_ribbon(aes(ymax= F1.Fit +(1.96*F1.SE),
+                  ymin= F1.Fit -(1.96*F1.SE)),
+              alpha = 0.5) +
+  geom_ribbon(aes(ymax= F2.Fit +(1.96*F2.SE),
+                  ymin= F2.Fit -(1.96*F2.SE)),
+              alpha = 0.5) +
+  labs(y = "Normalized Frequency",
+       x = "Scaled Time",
+       title = "Underlying Formant Trajectory of Spanish /a/") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "right") +
+  ylim(c(.4,1.6))
+bare_a
+```
+
+Use the following code to predict group and interaction effects for F1:
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), stress = c("stressed", "unstressed"))
+grid$Fit = predict(f1_a, grid, se = T, inc = c("stress", "stress:RTime"))$fit
+grid$SE = predict(f1_a, grid, se = T, inc = c("stress", "stress:RTime"))$se.fit
+```
+
+```{r}
+eff = ggplot(grid, aes(x = RTime)) +
+  geom_line(aes(y = Fit))+
+  geom_ribbon(aes(ymax = Fit+(1.96*SE),
+                  ymin = Fit-(1.96*SE)),
+              alpha = 0.5) +
+  facet_wrap(~stress)+
+  geom_abline(slope = 0,intercept = 0,lty = 2)+
+  ylab("Difference in Hz")
+eff
+```
+
+For F2:
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), stress = c("stressed", "unstressed"))
+grid$Fit = predict(f2_a, grid, se = T, inc = c("stress", "stress:RTime"))$fit
+grid$SE = predict(f2_a, grid, se = T, inc = c("stress", "stress:RTime"))$se.fit
+```
+
+Now to plot:
+
+```{r}
+eff = ggplot(grid, aes(x = RTime)) +
+  geom_line(aes(y = Fit))+
+  geom_ribbon(aes(ymax = Fit+(1.96*SE),
+                  ymin = Fit-(1.96*SE)),
+              alpha = 0.5) +
+  facet_wrap(~stress)+
+  geom_abline(slope = 0,intercept = 0,lty = 2)+
+  ylab("Difference in Hz")
+eff
+```
+
+Confidence intervals (95%) are used, and since 0 difference is included, the group effect is not significant for F1 or F2.
+
+Predicting group and interaction effects:
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), stress = c("stressed", "unstressed"))
+grid$Fit <- predict(f1_a, grid, se = T, inc = c("stress", "stress:RTime"))$fit
+grid$SE <- predict(f1_a, grid, se = T, inc = c("stress", "stress:RTime"))$se.fit
+```
+
+Plot:
+
+```{r}
+eff = ggplot(grid, aes(x = RTime)) +
+  geom_line(aes(y = Fit))+ 
+  geom_ribbon(aes(ymax = Fit+(1.96*SE),
+                  ymin = Fit-(1.96*SE)),
+              alpha = 0.5) +
+  facet_wrap(~stress)+ 
+  geom_abline(slope = 0, intercept = 0,lty = 2)+
+  ylab("Difference in Normalized Frequency")
+eff
+```
+
+From above, F1 is significantly different in different stress environments until about 60% into the vowel production.
+
+Now for F2.
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), stress = c("stressed", "unstressed"))
+grid$Fit = predict(f2_a, grid, se = T, inc = c("stress", "stress:RTime"))$fit
+grid$SE = predict(f2_a, grid, se = T, inc = c("stress", "stress:RTime"))$se.fit
+```
+
+Plot:
+
+```{r}
+eff = ggplot(grid, aes(x = RTime)) +
+  geom_line(aes(y = Fit))+ 
+  geom_ribbon(aes(ymax = Fit+(1.96*SE),
+                  ymin = Fit-(1.96*SE)),
+              alpha = 0.5) +
+  facet_wrap(~stress)+ 
+  geom_abline(slope = 0, intercept = 0,lty = 2)+
+  ylab("Difference in Normalized Frequency")
+eff
+```
+
+From above, stress does not significantly effect F2 production until above 60% into the vowel production.
+
+Fit and plot for other vowels.
+
+```{r}
+f1_e = ssanova(F1_norm ~ stress * RTime, data = e)
+f2_e = ssanova(F2_norm ~ stress * RTime, data = e)
+```
+
+To test the fit of the data, generate a dummy set of 100 evenly spaced points across our factor `RTime` for each level of `stress`.
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), stress = c("stressed","unstressed"))
+```
+
+Store the results of the predict function (comparing model to dummy set).
+
+```{r}
+grid$F1.Fit = predict(f1_e, newdata = grid, se = T)$fit
+grid$F1.SE = predict(f1_e, newdata = grid, se = T)$se.fit
+
+grid$F2.Fit = predict(f2_e, newdata = grid, se = T)$fit
+grid$F2.SE = predict(f2_e, newdata = grid, se = T)$se.fit
+```
+
+Plot the data stored in grid, with 95% confidence interval:
+
+```{r}
+ss_e = ggplot(data = grid,
+              aes(x = RTime,
+                  color = stress,
+                  group = stress)) +
+  geom_line(aes(y = F1.Fit),
+            alpha = 1,
+            color = "grey20")+ 
+  geom_line(aes(y = F2.Fit),
+            alpha = 1,
+            color = "grey20") +
+  geom_ribbon(aes(ymin = F1.Fit-(1.96*F1.SE),
+                  ymax = F1.Fit+(1.96*F1.SE),
+                  fill = stress),
+              alpha = 0.5,
+              color = "NA") + 
+  geom_ribbon(aes(ymin = F2.Fit-(1.96*F2.SE),
+                  ymax = F2.Fit+(1.96*F2.SE),
+                  fill = stress),
+              alpha = 0.5,
+              color = "NA") +
+  labs(y = "Normalized Frequency",
+       x = "Scaled Time",
+       title = "Formant Trajectories of Spanish /e/") +
+  guides(fill = guide_legend(title = "Stress")) +
+  scale_fill_hue(labels = c("Stressed", "Unstressed")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "right")
+ss_e
+```
+
+```{r echo = FALSE, eval = FALSE}
+# save image to pdf
+cairo_pdf("figs/contour_e.pdf", family = "Charis SIL", width = 7, height = 4)
+ss_e
+dev.off()
+```
+
+Now /o/:
+
+```{r}
+f1_o = ssanova(F1_norm ~ stress * RTime, data = o)
+f2_o = ssanova(F2_norm ~ stress * RTime, data = o)
+```
+
+To test the fit of the data, generate a dummy set of 100 evenly spaced points across our factor `RTime` for each level of `stress`.
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), stress = c("stressed","unstressed"))
+```
+
+Store the results of the predict function (comparing model to dummy set).
+
+```{r}
+grid$F1.Fit = predict(f1_o, newdata = grid, se = T)$fit
+grid$F1.SE = predict(f1_o, newdata = grid, se = T)$se.fit
+
+grid$F2.Fit = predict(f2_o, newdata = grid, se = T)$fit
+grid$F2.SE = predict(f2_o, newdata = grid, se = T)$se.fit
+```
+
+Plot the data stored in grid, with 95% confidence interval:
+
+```{r}
+ss_o = ggplot(data = grid,
+              aes(x = RTime,
+                  color = stress,
+                  group = stress)) +
+  geom_line(aes(y = F1.Fit),
+            alpha = 1,
+            color = "grey20")+ 
+  geom_line(aes(y = F2.Fit),
+            alpha = 1,
+            color = "grey20") +
+  geom_ribbon(aes(ymin = F1.Fit-(1.96*F1.SE),
+                  ymax = F1.Fit+(1.96*F1.SE),
+                  fill = stress),
+              alpha = 0.5,
+              color = "NA") + 
+  geom_ribbon(aes(ymin = F2.Fit-(1.96*F2.SE),
+                  ymax = F2.Fit+(1.96*F2.SE),
+                  fill = stress),
+              alpha = 0.5,
+              color = "NA") +
+  labs(y = "Normalized Frequency",
+       x = "Scaled Time",
+       title = "Formant Trajectories of Spanish /o/") +
+  guides(fill = guide_legend(title = "Stress")) +
+  scale_fill_hue(labels = c("Stressed", "Unstressed")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "right")
+ss_o
+```
+
+
+```{r echo = FALSE, eval = FALSE}
+# save image to pdf
+cairo_pdf("figs/contour_o.pdf", family = "Charis SIL", width = 7, height = 4)
+ss_o
+dev.off()
+```
+
+Now /u/:
+
+```{r}
+f1_u = ssanova(F1_norm ~ stress * RTime, data = u)
+f2_u = ssanova(F2_norm ~ stress * RTime, data = u)
+```
+
+To test the fit of the data, generate a dummy set of 100 evenly spaced points across our factor `RTime` for each level of `stress`.
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), stress = c("stressed","unstressed"))
+```
+
+Store the results of the predict function (comparing model to dummy set).
+
+```{r}
+grid$F1.Fit = predict(f1_u, newdata = grid, se = T)$fit
+grid$F1.SE = predict(f1_u, newdata = grid, se = T)$se.fit
+
+grid$F2.Fit = predict(f2_u, newdata = grid, se = T)$fit
+grid$F2.SE = predict(f2_u, newdata = grid, se = T)$se.fit
+```
+
+Plot the data stored in grid, with 95% confidence interval:
+
+```{r}
+ss_u = ggplot(data = grid,
+              aes(x = RTime,
+                  color = stress,
+                  group = stress)) +
+  geom_line(aes(y = F1.Fit),
+            alpha = 1,
+            color = "grey20")+ 
+  geom_line(aes(y = F2.Fit),
+            alpha = 1,
+            color = "grey20") +
+  geom_ribbon(aes(ymin = F1.Fit-(1.96*F1.SE),
+                  ymax = F1.Fit+(1.96*F1.SE),
+                  fill = stress),
+              alpha = 0.5,
+              color = "NA") + 
+  geom_ribbon(aes(ymin = F2.Fit-(1.96*F2.SE),
+                  ymax = F2.Fit+(1.96*F2.SE),
+                  fill = stress),
+              alpha = 0.5,
+              color = "NA") +
+  labs(y = "Normalized Frequency",
+       x = "Scaled Time",
+       title = "Formant Trajectories of Spanish /u/") +
+  guides(fill = guide_legend(title = "Stress")) +
+  scale_fill_hue(labels = c("Stressed", "Unstressed")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "right")
+ss_u
+```
+
+
+```{r echo = FALSE, eval = FALSE}
+# save image to pdf
+cairo_pdf("figs/contour_u.pdf", family = "Charis SIL", width = 7, height = 4)
+ss_u
+dev.off()
+```
+
+Now /i/:
+
+```{r}
+f1_i = ssanova(F1_norm ~ stress * RTime, data = i)
+f2_i = ssanova(F2_norm ~ stress * RTime, data = i)
+```
+
+To test the fit of the data, generate a dummy set of 100 evenly spaced points across our factor `RTime` for each level of `stress`.
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), stress = c("stressed","unstressed"))
+```
+
+Store the results of the predict function (comparing model to dummy set).
+
+```{r}
+grid$F1.Fit = predict(f1_i, newdata = grid, se = T)$fit
+grid$F1.SE = predict(f1_i, newdata = grid, se = T)$se.fit
+
+grid$F2.Fit = predict(f2_i, newdata = grid, se = T)$fit
+grid$F2.SE = predict(f2_i, newdata = grid, se = T)$se.fit
+```
+
+Plot the data stored in grid, with 95% confidence interval:
+
+```{r}
+ss_i = ggplot(data = grid,
+              aes(x = RTime,
+                  color = stress,
+                  group = stress)) +
+  geom_line(aes(y = F1.Fit),
+            alpha = 1,
+            color = "grey20")+ 
+  geom_line(aes(y = F2.Fit),
+            alpha = 1,
+            color = "grey20") +
+  geom_ribbon(aes(ymin = F1.Fit-(1.96*F1.SE),
+                  ymax = F1.Fit+(1.96*F1.SE),
+                  fill = stress),
+              alpha = 0.5,
+              color = "NA") + 
+  geom_ribbon(aes(ymin = F2.Fit-(1.96*F2.SE),
+                  ymax = F2.Fit+(1.96*F2.SE),
+                  fill = stress),
+              alpha = 0.5,
+              color = "NA") +
+  labs(y = "Normalized Frequency",
+       x = "Scaled Time",
+       title = "Formant Trajectories of Spanish /i/") +
+  guides(fill = guide_legend(title = "Stress")) +
+  scale_fill_hue(labels = c("Stressed", "Unstressed")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "right")
+ss_i
+```
+
+
+```{r echo = FALSE, eval = FALSE}
+# save image to pdf
+cairo_pdf("figs/contour_i.pdf", family = "Charis SIL", width = 7, height = 4)
+ss_i
+dev.off()
+```
+
+
