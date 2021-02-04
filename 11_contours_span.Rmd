@@ -47,37 +47,318 @@ head(formants, 5) %>%
   scroll_box(width = "100%")
 ```
 
-Since this data set contains Spanish vowels, create subsets of the data for each vowel in question. From these subsets, randomly sample 100 productions.
+Since this data set contains Spanish vowels, create subsets of the data for each vowel in question. From these subsets, randomly sample 50 unique productions and all associated rows (since there is way too much data) from each participant, but only 9 from /u/ since that is the limiting value.
 
 ```{r}
 a = formants %>% 
-  filter(Vowel=="a") %>% 
-  filter(unique %in% sample(levels(unique),100))
+  filter(Vowel=="a")
 
+sample_n_groups = function(grouped_df, size, replace = FALSE, weight=NULL) {
+  grp_var <- grouped_df %>% 
+    groups %>%
+    unlist %>% 
+    as.character
+  random_grp <- grouped_df %>% 
+    summarise() %>% 
+    sample_n(size, replace, weight) %>% 
+    mutate(unique_id = 1:NROW(.))
+  grouped_df %>% 
+    right_join(random_grp, by=grp_var) %>% 
+    group_by_(grp_var) 
+}
+
+set.seed(42) # for reproducible sampling
+a_cbas = a %>%
+  filter(Corpus=="CBAS") %>% 
+  group_by(unique) %>%
+  sample_n_groups(100)
+
+a_dime = a %>%
+  filter(Corpus=="DIMEx100") %>% 
+  group_by(unique) %>%
+  sample_n_groups(100)
+
+a_slim = rbind(a_cbas, a_dime)
+a_slim
+```
+
+```{r}
+o = formants %>% 
+  filter(Vowel=="o")
+
+sample_n_groups = function(grouped_df, size, replace = FALSE, weight=NULL) {
+  grp_var <- grouped_df %>% 
+    groups %>%
+    unlist %>% 
+    as.character
+  random_grp <- grouped_df %>% 
+    summarise() %>% 
+    sample_n(size, replace, weight) %>% 
+    mutate(unique_id = 1:NROW(.))
+  grouped_df %>% 
+    right_join(random_grp, by=grp_var) %>% 
+    group_by_(grp_var) 
+}
+
+set.seed(42) # for reproducible sampling
+o_cbas = o %>%
+  filter(Corpus=="CBAS") %>% 
+  group_by(unique) %>%
+  sample_n_groups(100)
+
+o_dime = o %>%
+  filter(Corpus=="DIMEx100") %>% 
+  group_by(unique) %>%
+  sample_n_groups(100)
+
+o_slim = rbind(o_cbas, o_dime)
+o_slim
+```
+
+```{r}
+o_track = ggplot(data = o_slim,
+                 aes(x = RTime,
+                     group = unique,
+                     color = Corpus)) +
+  geom_line(aes(y = F1_norm),
+            alpha = 0.8) +
+  geom_line(aes(y = F2_norm),
+            alpha = 0.8) +
+  theme_classic()
+o_track
+```
+
+Now to fit the data with SS-ANOVA.
+
+```{r}
+f1_o = ssanova(F1_norm ~ Corpus * RTime, data = o_slim)
+f2_o = ssanova(F2_norm ~ Corpus * RTime, data = o_slim)
+```
+
+To test the fit of the data, generate a dummy set of 100 evenly spaced points across our factor `RTime` for each level of `Corpus`.
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), Corpus = c("CBAS","DIMEx100"))
+```
+
+Store the results of the predict function (comparing model to dummy set).
+
+```{r}
+grid$F1.Fit = predict(f1_o, newdata = grid, se = T)$fit
+grid$F1.SE = predict(f1_o, newdata = grid, se = T)$se.fit
+
+grid$F2.Fit = predict(f2_o, newdata = grid, se = T)$fit
+grid$F2.SE = predict(f2_o, newdata = grid, se = T)$se.fit
+```
+
+Plot the data stored in grid, with 95% confidence interval:
+
+```{r}
+ss_o = ggplot(data = grid,
+              aes(x = RTime,
+                  color = Corpus,
+                  group = Corpus)) +
+  geom_line(aes(y = F1.Fit),
+            alpha = 1,
+            color = "grey20")+ 
+  geom_line(aes(y = F2.Fit),
+            alpha = 1,
+            color = "grey20") +
+  geom_ribbon(aes(ymin = F1.Fit-(1.96*F1.SE),
+                  ymax = F1.Fit+(1.96*F1.SE),
+                  fill = Corpus),
+              alpha = 0.5,
+              color = "NA") + 
+  geom_ribbon(aes(ymin = F2.Fit-(1.96*F2.SE),
+                  ymax = F2.Fit+(1.96*F2.SE),
+                  fill = Corpus),
+              alpha = 0.5,
+              color = "NA") +
+  labs(y = "Normalized Frequency",
+       x = "Scaled Time",
+       title = "Formant Trajectories of Spanish /o/") +
+  guides(fill = guide_legend(title = "Corpus")) +
+  scale_fill_hue(labels = c("Bay Area Spanish", "Mexican Spanish")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "right")
+ss_o
+```
+
+```{r echo = FALSE, eval = FALSE}
+# save image to pdf
+cairo_pdf("figs/contour_o.pdf", family = "Charis SIL", width = 7, height = 4)
+ss_o
+dev.off()
+```
+
+Now to measure statistically whether stress significantly impacts the formant shape.
+
+```{r}
+## create prediction grid
+grid = expand.grid(RTime = seq(0,1,length = 100),Corpus = c("CBAS","DIMEx100"))
+
+## Predict for certain terms
+## The "inc" argument to predict is key here
+grid$F1.Fit = predict(f1_o, grid, se = T,inc = c("1","RTime"))$fit
+grid$F1.SE = predict(f1_o, grid, se = T,inc = c("1","RTime"))$se.fit
+grid$F2.Fit = predict(f2_o, grid, se = T,inc = c("1","RTime"))$fit
+grid$F2.SE = predict(f2_o, grid, se = T,inc = c("1","RTime"))$se.fit
+```
+
+Now we can plot this underlying form, without effects of stress.
+
+```{r}
+bare_o = ggplot(grid, aes(x = RTime)) +
+  geom_line(aes(y= F1.Fit)) +
+  geom_line(aes(y= F2.Fit)) +
+  geom_ribbon(aes(ymax= F1.Fit +(1.96*F1.SE),
+                  ymin= F1.Fit -(1.96*F1.SE)),
+              alpha = 0.5) +
+  geom_ribbon(aes(ymax= F2.Fit +(1.96*F2.SE),
+                  ymin= F2.Fit -(1.96*F2.SE)),
+              alpha = 0.5) +
+  labs(y = "Normalized Frequency",
+       x = "Scaled Time",
+       title = "Underlying Formant Trajectory of Spanish /o/") +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size = 16),
+        axis.title = element_text(size = 12),
+        legend.text = element_text(size = 12),
+        legend.title = element_text(size = 14),
+        legend.position = "right") +
+  ylim(c(.4,1.6))
+bare_o
+```
+
+Use the following code to predict group and interaction effects for F1:
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), Corpus = c("CBAS", "DIMEx100"))
+grid$Fit = predict(f1_o, grid, se = T, inc = c("Corpus", "Corpus:RTime"))$fit
+grid$SE = predict(f1_o, grid, se = T, inc = c("Corpus", "Corpus:RTime"))$se.fit
+```
+
+```{r}
+eff = ggplot(grid, aes(x = RTime)) +
+  geom_line(aes(y = Fit))+
+  geom_ribbon(aes(ymax = Fit+(1.96*SE),
+                  ymin = Fit-(1.96*SE)),
+              alpha = 0.5) +
+  facet_wrap(~Corpus)+
+  geom_abline(slope = 0,intercept = 0,lty = 2)+
+  ylab("Difference in Hz")
+eff
+```
+
+For F2:
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), Corpus = c("CBAS", "DIMEx100"))
+grid$Fit = predict(f2_o, grid, se = T, inc = c("Corpus", "Corpus:RTime"))$fit
+grid$SE = predict(f2_o, grid, se = T, inc = c("Corpus", "Corpus:RTime"))$se.fit
+```
+
+Now to plot:
+
+```{r}
+eff = ggplot(grid, aes(x = RTime)) +
+  geom_line(aes(y = Fit))+
+  geom_ribbon(aes(ymax = Fit+(1.96*SE),
+                  ymin = Fit-(1.96*SE)),
+              alpha = 0.5) +
+  facet_wrap(~Corpus)+
+  geom_abline(slope = 0,intercept = 0,lty = 2)+
+  ylab("Difference in Hz")
+eff
+```
+
+Confidence intervals (95%) are used, and since 0 difference is included, the group effect is not significant for F2, but is significant for F1.
+
+Predicting group and interaction effects:
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), Corpus = c("CBAS", "DIMEx100"))
+grid$Fit <- predict(f1_o, grid, se = T, inc = c("Corpus", "Corpus:RTime"))$fit
+grid$SE <- predict(f1_o, grid, se = T, inc = c("Corpus", "Corpus:RTime"))$se.fit
+```
+
+Plot:
+
+```{r}
+eff = ggplot(grid, aes(x = RTime)) +
+  geom_line(aes(y = Fit))+ 
+  geom_ribbon(aes(ymax = Fit+(1.96*SE),
+                  ymin = Fit-(1.96*SE)),
+              alpha = 0.5) +
+  facet_wrap(~Corpus)+ 
+  geom_abline(slope = 0, intercept = 0,lty = 2)+
+  ylab("Difference in Normalized Frequency")
+eff
+```
+
+From above, F1 is significantly different across the corpora during the entire production of the vowel.
+
+Now for F2.
+
+```{r}
+grid = expand.grid(RTime = seq(0, 1, length = 100), Corpus = c("CBAS", "DIMEx100"))
+grid$Fit <- predict(f2_o, grid, se = T, inc = c("Corpus", "Corpus:RTime"))$fit
+grid$SE <- predict(f2_o, grid, se = T, inc = c("Corpus", "Corpus:RTime"))$se.fit
+```
+
+Plot:
+
+```{r}
+eff = ggplot(grid, aes(x = RTime)) +
+  geom_line(aes(y = Fit))+ 
+  geom_ribbon(aes(ymax = Fit+(1.96*SE),
+                  ymin = Fit-(1.96*SE)),
+              alpha = 0.5) +
+  facet_wrap(~Corpus)+ 
+  geom_abline(slope = 0, intercept = 0,lty = 2)+
+  ylab("Difference in Normalized Frequency")
+eff
+```
+
+From above, Corpus significantly affects F2 production until 60% into the vowel production.
+
+```{r}
 e = formants %>% 
   filter(Vowel=="e")%>% 
-  filter(unique %in% sample(levels(unique),100))
+  group_by(Participant, unique) %>% 
+  sample_n(20)
 
 i = formants %>% 
   filter(Vowel=="i")%>% 
-  filter(unique %in% sample(levels(unique),100))
+  group_by(Participant, unique) %>% 
+  sample_n(20)
 
 o = formants %>% 
   filter(Vowel=="o") %>% 
-  filter(unique %in% sample(levels(unique),100))
+  group_by(Participant, unique) %>% 
+  sample_n(20)
 
 u = formants %>% 
   filter(Vowel=="u") %>% 
-  filter(unique %in% sample(levels(unique),100))
+  group_by(Participant, unique) %>% 
+  sample_n(9)
 ```
 
-Make a preliminary plots of /a/ productions, and visually see where formant tracking errors may be. the factor `unique` is used to group together trajectories of the same token by the same speaker.
+```{r}
+a
+```
+
+Make a preliminary plots of /a/ productions across `Corpus`, and visually see where formant tracking errors may be. the factor `unique` is used to group together trajectories of the same token by the same speaker.
 
 ```{r}
-a_track = ggplot(data = a,
+a_track = ggplot(data = a_slim,
                  aes(x = RTime,
                      group = unique,
-                     color = stress)) +
+                     color = Corpus)) +
   geom_line(aes(y = F1_norm),
             alpha = 0.8) +
   geom_line(aes(y = F2_norm),
@@ -89,8 +370,8 @@ a_track
 Now to fit the data with SS-ANOVA.
 
 ```{r}
-f1_a = ssanova(F1_norm ~ stress * RTime, data = a)
-f2_a = ssanova(F2_norm ~ stress * RTime, data = a)
+f1_a = ssanova(F1_norm ~ Corpus * RTime, data = a_slim)
+f2_a = ssanova(F2_norm ~ Corpus * RTime, data = a_slim)
 ```
 
 To test the fit of the data, generate a dummy set of 100 evenly spaced points across our factor `RTime` for each level of `stress`.
